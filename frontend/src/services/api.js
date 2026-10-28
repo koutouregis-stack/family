@@ -1,56 +1,64 @@
-import axios from 'axios';
+import React, { createContext, useState, useEffect } from 'react';
+import { authService } from '../services';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+export const AuthContext = createContext();
 
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-// Add token to requests
-api.interceptors.request.use(
-  config => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
     }
-    return config;
-  },
-  error => Promise.reject(error)
-);
+    setLoading(false);
+  }, []);
 
-// Handle token refresh
-api.interceptors.response.use(
-  response => response,
-  async error => {
-    const originalRequest = error.config;
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        const response = await api.post('/auth/refresh-token', {}, {
-          headers: {
-            Authorization: `Bearer ${refreshToken}`
-          }
-        });
-        
-        localStorage.setItem('accessToken', response.data.accessToken);
-        originalRequest.headers.Authorization = `Bearer ${response.data.accessToken}`;
-        
-        return api(originalRequest);
-      } catch (err) {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
-      }
+  const login = async (email, password) => {
+    try {
+      setError(null);
+      const response = await authService.login(email, password);
+
+      localStorage.setItem('accessToken', response.data.accessToken);
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      setUser(response.data.user);
+      return response.data;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors de la connexion');
+      throw err;
     }
-    
-    return Promise.reject(error);
-  }
-);
+  };
 
-export default api;
+  const register = async (nom, prenom, email, password, confirmPassword) => {
+    try {
+      setError(null);
+      const response = await authService.register(nom, prenom, email, password, confirmPassword);
+
+      localStorage.setItem('accessToken', response.data.accessToken);
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      setUser(response.data.user);
+      return response.data;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors de l\'inscription');
+      throw err;
+    }
+  };
+
+  const logout = () => {
+    authService.logout();
+    setUser(null);
+    setError(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, error, login, register, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};

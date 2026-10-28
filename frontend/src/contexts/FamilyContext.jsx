@@ -1,89 +1,94 @@
-import React, { createContext, useState } from 'react';
-import { familyService } from '../services';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { useFamily } from '../hooks/useFamily';
 
-export const FamilyContext = createContext();
+export default function Dashboard() {
+  const { user } = useAuth();
+  const { families, getFamilies, createFamily, loading, error } = useFamily();
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newFamily, setNewFamily] = useState({ nom_famille: '', description: '' });
+  const navigate = useNavigate();
 
-export const FamilyProvider = ({ children }) => {
-  const [families, setFamilies] = useState([]);
-  const [currentFamily, setCurrentFamily] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  useEffect(() => {
+    if (user) {
+      getFamilies();
+    }
+  }, [user]);
 
-  const getFamilies = async () => {
+  const handleCreateFamily = async (e) => {
+    e.preventDefault();
     try {
-      setLoading(true);
-      setError(null);
-      const response = await familyService.getFamilies();
-      setFamilies(response.data);
-      return response.data;
+      await createFamily(newFamily.nom_famille, newFamily.description);
+      setNewFamily({ nom_famille: '', description: '' });
+      setShowCreateForm(false);
+      getFamilies();
     } catch (err) {
-      setError(err.response?.data?.error || 'Erreur');
-      throw err;
-    } finally {
-      setLoading(false);
+      console.error('Erreur:', err);
     }
   };
 
-  const selectFamily = async (familyId) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await familyService.getFamily(familyId);
-      setCurrentFamily(response.data);
-      return response.data;
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erreur');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createFamily = async (nom_famille, description) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await familyService.createFamily(nom_famille, description);
-      setFamilies([...families, response.data.family]);
-      return response.data;
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erreur');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getMembers = async (familyId) => {
-    try {
-      setLoading(true);
-      const response = await familyService.getMembers(familyId);
-      setMembers(response.data);
-      return response.data;
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erreur');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!user) {
+    return <div className="text-center py-8">Veuillez vous connecter</div>;
+  }
 
   return (
-    <FamilyContext.Provider
-      value={{
-        families,
-        currentFamily,
-        members,
-        loading,
-        error,
-        getFamilies,
-        selectFamily,
-        createFamily,
-        getMembers
-      }}
-    >
-      {children}
-    </FamilyContext.Provider>
+    <div className="container">
+      <h1 className="text-3xl font-bold mb-8">Tableau de bord</h1>
+
+      <div className="mb-8">
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="btn btn-primary"
+        >
+          + Créer une famille
+        </button>
+
+        {showCreateForm && (
+          <form onSubmit={handleCreateFamily} className="card mt-4 max-w-md">
+            <input
+              type="text"
+              placeholder="Nom de la famille"
+              value={newFamily.nom_famille}
+              onChange={(e) => setNewFamily({ ...newFamily, nom_famille: e.target.value })}
+              className="input-field mb-4"
+              required
+            />
+            <textarea
+              placeholder="Description"
+              value={newFamily.description}
+              onChange={(e) => setNewFamily({ ...newFamily, description: e.target.value })}
+              className="input-field mb-4"
+              rows="3"
+            />
+            <button type="submit" className="btn btn-primary">
+              Créer
+            </button>
+          </form>
+        )}
+      </div>
+
+      {error && <div className="error mb-4">{error}</div>}
+
+      {loading ? (
+        <div>Chargement...</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {families.map(family => (
+            <div
+              key={family.id}
+              className="card cursor-pointer hover:shadow-lg transition"
+              onClick={() => navigate(`/family/${family.id}/tasks`)}
+            >
+              <h2 className="text-xl font-bold mb-2">{family.nom_famille}</h2>
+              <p className="text-gray-600">{family.description || 'Aucune description'}</p>
+              <span className="inline-block mt-4 text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded">
+                {family.role === 'admin' ? 'Admin' : 'Membre'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
-};
+}
